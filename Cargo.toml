@@ -1,0 +1,17 @@
+[package]
+name = "voicebot"
+version = "0.1.0"
+edition = "2021"
+build = "build.rs"
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
+audrey = "0.3.0"
+coqui-stt = "1.0.2"
+dasp_interpolate = { version = "0.11.0", features = ["linear"] }
+dasp_signal = "0.11.0"
+cpal = "0.15.0"
+ringbuf = "0.3.2"
+
+[build-dependencies]
+cc = "1.0"
