@@ -1,4 +1,3 @@
-use audrey::lewton::audio;
 use coqui_stt::Model;
 use cpal::traits::{DeviceTrait, HostTrait, StreamTrait};
 use cpal::{Sample, StreamConfig, StreamError};
@@ -22,8 +21,8 @@ fn main() {
 
     m.enable_external_scorer("../../libs/model/model.scorer")
         .unwrap();
-    m.add_hot_word("microwave", 1.0);
-    m.add_hot_word("toaster", 100.0);
+    m.add_hot_word("microwave", 1.0).unwrap();
+    m.add_hot_word("toaster", 100.0).unwrap();
 
     // The buffer to share samples
     let ring = HeapRb::<f32>::new(m.get_sample_rate() as usize * 2);
@@ -132,61 +131,6 @@ impl Signal for SignalWrap {
         }
     }
 }
-
-// fn main1() {
-//     let audio_file_path = args()
-//         .nth(1)
-//         .expect("Please specify an audio file to run STT on");
-
-//     let mut m = Model::new("../../libs/model/model.tflite").unwrap();
-
-//     m.enable_external_scorer("../../libs/model/model.scorer")
-//         .unwrap();
-
-//     let audio_file = File::open(audio_file_path).unwrap();
-//     let mut reader = Reader::new(audio_file).unwrap();
-//     let desc = reader.description();
-//     // input audio must be mono and usually at 16KHz, but this depends on the model
-//     let channel_count = desc.channel_count();
-
-//     let src_sample_rate = desc.sample_rate();
-//     let dest_sample_rate = m.get_sample_rate() as u32;
-//     // Obtain the buffer of samples
-//     let mut audio_buf: Vec<_> = if src_sample_rate == dest_sample_rate {
-//         reader.samples().map(|s| s.unwrap()).collect()
-//     } else {
-//         // We need to interpolate to the target sample rate
-//         let interpolator = Linear::new([0i16], [0]);
-//         let conv = Converter::from_hz_to_hz(
-//             from_iter(reader.samples::<i16>().map(|s| [s.unwrap()])),
-//             interpolator,
-//             src_sample_rate as f64,
-//             dest_sample_rate as f64,
-//         );
-//         conv.until_exhausted().map(|v| v[0]).collect()
-//     };
-//     // Convert to mono if required
-//     if channel_count == 2 {
-//         audio_buf = stereo_to_mono(&audio_buf);
-//     } else if channel_count != 1 {
-//         panic!(
-//             "unknown number of channels: got {}, expected 1 or 2",
-//             channel_count
-//         );
-//     }
-
-//     let st = Instant::now();
-
-//     // Run the speech to text algorithm
-//     let result = m.speech_to_text(&audio_buf).unwrap();
-
-//     let et = Instant::now();
-//     let tt = et.duration_since(st);
-
-//     // Output the result
-//     println!("{}", result);
-//     println!("took {}ns", tt.as_nanos());
-// }
 
 fn stereo_to_mono(samples: &[i16]) -> Vec<i16> {
     // converting stereo to mono audio is relatively simple
