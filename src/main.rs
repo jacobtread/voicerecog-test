@@ -1,16 +1,13 @@
-use audrey::Reader;
+use audrey::lewton::audio;
 use coqui_stt::Model;
 use cpal::traits::{DeviceTrait, HostTrait, StreamTrait};
 use cpal::{Sample, StreamConfig, StreamError};
 use dasp_interpolate::linear::Linear;
 use dasp_signal::interpolate::Converter;
-use dasp_signal::{from_iter, Signal};
+use dasp_signal::Signal;
 use ringbuf::{Consumer, HeapRb, SharedRb};
-use std::env::args;
-use std::fs::File;
 use std::mem::MaybeUninit;
-use std::sync::{mpsc, Arc, Mutex};
-use std::thread::yield_now;
+use std::sync::Arc;
 use std::time::Instant;
 
 fn main() {
@@ -25,17 +22,12 @@ fn main() {
 
     m.enable_external_scorer("../../libs/model/model.scorer")
         .unwrap();
+    m.add_hot_word("microwave", 1.0);
+    m.add_hot_word("toaster", 100.0);
 
     // The buffer to share samples
     let ring = HeapRb::<f32>::new(m.get_sample_rate() as usize * 2);
-    let (mut producer, mut consumer) = ring.split();
-
-    // Fill the samples with 0.0 equal to the length of the delay.
-    for _ in 0..m.get_sample_rate() as usize {
-        // The ring buffer has twice as much space as necessary to add latency here,
-        // so this should never fail
-        producer.push(0.0).unwrap();
-    }
+    let (mut producer, consumer) = ring.split();
 
     let data_in = move |data: &[f32], _: &cpal::InputCallbackInfo| {
         for &sample in data {
@@ -68,30 +60,39 @@ fn main() {
 
     let mut audio_buffer = Vec::new();
 
-    let mut silent_count = 0;
-
     let mut sent_talk = false;
-    let mut sent_silent = false;
 
-    let mut actual_data = 0;
+    let mut silent_start: Option<Instant> = None;
 
     loop {
         if let Some(value) = conv.next() {
             audio_buffer.push(value);
-            if (value > 1000 || value < -1000) {
-                actual_data += 1;
+            if value > 2000 || value < -2000 {
                 if !sent_talk {
                     println!("TALKING");
                     sent_talk = true;
                 }
+                silent_start = None;
             } else {
-                silent_count += 1;
+                let elapsed = match silent_start {
+                    Some(value) => value.elapsed().as_secs_f32(),
+                    None => {
+                        silent_start = Some(Instant::now());
+                        continue;
+                    }
+                };
 
-                if silent_count > 100000 && audio_buffer.len() > 0 && actual_data > 0 {
+                if elapsed >= 5.0 {
                     println!("PROCESSING");
                     sent_talk = false;
 
                     let st = Instant::now();
+
+                    if input_config.channels == 2 {
+                        audio_buffer = stereo_to_mono(&audio_buffer);
+                    } else if input_config.channels != 1 {
+                        panic!("Expected 1 or 2 audio channels")
+                    }
 
                     // Run the speech to text algorithm
                     let result = m.speech_to_text(&audio_buffer).unwrap();
@@ -101,10 +102,9 @@ fn main() {
 
                     // Output the result
                     println!("{}", result);
-                    println!("took {}ns", tt.as_nanos());
-                    silent_count = 0;
+                    println!("took {}ms", tt.as_millis());
                     audio_buffer.clear();
-                    actual_data = 0;
+                    silent_start = None;
                 }
             }
         }
@@ -188,19 +188,19 @@ impl Signal for SignalWrap {
 //     println!("took {}ns", tt.as_nanos());
 // }
 
-// fn stereo_to_mono(samples: &[i16]) -> Vec<i16> {
-//     // converting stereo to mono audio is relatively simple
-//     // just take the average of the two channels
-//     samples
-//         .chunks(2)
-//         .map(|c| {
-//             if c.len() == 1 {
-//                 return c[0];
-//             } else if c.len() == 0 {
-//                 return 0;
-//             }
+fn stereo_to_mono(samples: &[i16]) -> Vec<i16> {
+    // converting stereo to mono audio is relatively simple
+    // just take the average of the two channels
+    samples
+        .chunks(2)
+        .map(|c| {
+            if c.len() == 1 {
+                return c[0];
+            } else if c.len() == 0 {
+                return 0;
+            }
 
-//             (c[0] + c[1]) / 2
-//         })
-//         .collect()
-// }
+            (c[0] + c[1]) / 2
+        })
+        .collect()
+}
